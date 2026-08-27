@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Exercício WebGL - Robô Detalhado</title>
+    <style>
+        body { margin: 0; background-color: #111; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { border: 1px solid #fff; }
+    </style>
+</head>
+<body>
+    <canvas id="meuCanvas" width="800" height="600"></canvas>
+
+    <script>
+        // 1. PREPARAÇÃO DO AMBIENTE
+        const canvas = document.getElementById('meuCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            throw new Error('WebGL não suportado!');
+        }
+
+        // 2. CRIAÇÃO E COMPILAÇÃO DOS SHADERS
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision mediump float;
+            uniform vec4 u_color; // Cor recebida do JS
+            void main() {
+                gl_FragColor = u_color;
+            }
+        `;
+
+        function compileShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Erro ao compilar shader:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        // 3. CRIAÇÃO E VINCULAÇÃO DO PROGRAMA
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error('Erro ao vincular programa: ' + gl.getProgramInfoLog(program));
+        }
+
+        const positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+        const colorUniformLocation = gl.getUniformLocation(program, 'u_color');
+
+        const positionBuffer = gl.createBuffer();
+        
+        gl.useProgram(program);
+
+        gl.enableVertexAttribArray(positionAttributeLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+ 
+        function desenharParte(vertices, cor, modo) {
+            gl.uniform4fv(colorUniformLocation, cor);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+            const numeroDeVertices = vertices.length / 2;
+            gl.drawArrays(modo, 0, numeroDeVertices);
+        }
+
+
+        function desenharCena() {
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0); // Fundo preto
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            // --- 1. CABEÇA ---
+            const cabecaVertices = [
+                 0.0,  0.65,  // Vértice central
+                -0.1,  0.65,  // Canto sup esq
+                 0.1,  0.65,  // Canto sup dir
+                 0.1,  0.3,  // Canto inf dir
+                -0.1,  0.3,  // Canto inf esq
+                -0.1,  0.65   // Fecha o loop
+            ];
+            const corCabeca = [0.24, 0.83, 0.79, 1.0]; // azul claro
+            desenharParte(cabecaVertices, corCabeca, gl.TRIANGLE_FAN);
+
+            // --- 1.5 DOIS OLHOS METÁLICOS ---
+            const corMoldura = [0.4, 0.4, 0.45, 1.0]; // Cinza metálico
+            const corLente = [1.0, 0.9, 0.2, 1.0];    // Amarelo luz
+
+            // 1. Olho Esquerdo (Moldura)
+            const molduraEsqVertices = [
+                -0.08,  0.61,  // Canto sup esq
+                -0.02,  0.61,  // Canto sup dir
+                -0.08,  0.51,  // Canto inf esq
+                -0.02,  0.51  // Canto inf dir
+            ];
+            desenharParte(molduraEsqVertices, corMoldura, gl.TRIANGLE_STRIP);
+
+            // 2. Olho Esquerdo 
+            const lenteEsqVertices = [
+                -0.07,  0.59,
+                -0.03,  0.59,
+                -0.07,  0.53,
+                -0.03,  0.53
+            ];
+            desenharParte(lenteEsqVertices, corLente, gl.TRIANGLE_STRIP);
+
+            // 3. Olho Direito (Moldura)
+            const molduraDirVertices = [
+                 0.02,  0.61,  // Canto sup esq
+                 0.08,  0.61,  // Canto sup dir
+                 0.02,  0.51,  // Canto inf esq
+                 0.08,  0.51   // Canto inf dir
+            ];
+            desenharParte(molduraDirVertices, corMoldura, gl.TRIANGLE_STRIP);
+
+            // 4. Olho Direito (Luz interna)
+            const lenteDirVertices = [
+                 0.03,  0.59,
+                 0.07,  0.59,
+                 0.03,  0.53,
+                 0.07,  0.53
+            ];
+            desenharParte(lenteDirVertices, corLente, gl.TRIANGLE_STRIP);
+
+            // --- 2. ANTENA ---
+            // Haste
+            const hasteVertices = [
+                -0.02, 0.65,
+                 0.02, 0.65,
+                -0.02, 0.75,
+                 0.02, 0.75
+            ];
+            const corHaste = [0.5, 0.5, 0.5, 1.0]; // Cinza metálico
+            desenharParte(hasteVertices, corHaste, gl.TRIANGLE_STRIP);
+
+            // Ponta (Luz)
+            const pontaVertices = [
+                -0.05, 0.75,
+                 0.05, 0.75,
+                -0.05, 0.85,
+                 0.05, 0.85
+            ];
+            const corLuz = [1.0, 0.8, 0.0, 1.0]; // Amarelo brilhante
+            desenharParte(pontaVertices, corLuz, gl.TRIANGLE_STRIP);
+
+            // --- 3. CORPO ---
+            const corpoVertices = [
+                -0.2,  0.45,
+                 0.2,  0.45,
+                -0.2,  0.0, 
+                 0.2,  0.0  
+            ];
+            const corCorpo = [0.94, 0.76, 0.76, 1.0]; // "cor de pele" original
+            desenharParte(corpoVertices, corCorpo, gl.TRIANGLE_STRIP);
+
+            // --- 4. PAINEL DE CONTROLE NO PEITO ---
+            const painelVertices = [
+                -0.12, 0.35, 
+                 0.12, 0.35, 
+                -0.12, 0.10, 
+                 0.12, 0.10  
+            ];
+            const corPainel = [0.1, 0.1, 0.1, 1.0]; // Cinza escuro
+            desenharParte(painelVertices, corPainel, gl.TRIANGLE_STRIP);
+
+            const botaoVertices = [
+                -0.08, 0.30,
+                 0.08, 0.30,
+                -0.08, 0.15,
+                 0.08, 0.15
+            ];
+            const corBotao = [0.0, 1.0, 0.5, 1.0]; // Verde neon
+            desenharParte(botaoVertices, corBotao, gl.TRIANGLE_STRIP);
+
+            // --- 5. BRAÇOS ---
+            const bracoEsqVertices = [
+                -0.3,  0.4,
+                -0.2,  0.4,
+                -0.3,  0.1,
+                -0.2,  0.1
+            ];
+            const corBraco = [0.7, 0.2, 0.2, 1.0]; // Vermelho
+            desenharParte(bracoEsqVertices, corBraco, gl.TRIANGLE_STRIP);
+
+            const bracoDirVertices = [
+                 0.2,  0.4,
+                 0.3,  0.4,
+                 0.2,  0.1,
+                 0.3,  0.1
+            ];
+            desenharParte(bracoDirVertices, corBraco, gl.TRIANGLE_STRIP);
+
+            // --- 6. ARTICULAÇÕES (OMBROS) ---
+            const ombroEsqVertices = [
+                -0.32, 0.45,
+                -0.18, 0.45,
+                -0.32, 0.35,
+                -0.18, 0.35
+            ];
+            const corArticulacao = [0.4, 0.4, 0.4, 1.0]; // Cinza médio
+            desenharParte(ombroEsqVertices, corArticulacao, gl.TRIANGLE_STRIP);
+
+            const ombroDirVertices = [
+                 0.18, 0.45,
+                 0.32, 0.45,
+                 0.18, 0.35,
+                 0.32, 0.35
+            ];
+            desenharParte(ombroDirVertices, corArticulacao, gl.TRIANGLE_STRIP);
+
+            // --- 7. PERNAS ---
+            const pernaEsqVertices = [
+                -0.15, -0.0,
+                -0.05, -0.0,
+                -0.15, -0.4,
+                -0.05, -0.4
+            ];
+            const corPerna = [0.2, 0.2, 0.7, 1.0]; // Azul
+            desenharParte(pernaEsqVertices, corPerna, gl.TRIANGLE_STRIP);
+
+            const pernaDirVertices = [
+                 0.05, -0.0,
+                 0.15, -0.0,
+                 0.05, -0.4,
+                 0.15, -0.4
+            ];
+            desenharParte(pernaDirVertices, corPerna, gl.TRIANGLE_STRIP);
+
+            // --- 8. PÉS 
+            const peEsqVertices = [
+                -0.20, -0.40,
+                 -0.01, -0.40,
+                -0.20, -0.5,
+                 -0.01, -0.5
+            ];
+            const corPe = [0.3, 0.3, 0.3, 1.0]; // Cinza escuro
+            desenharParte(peEsqVertices, corPe, gl.TRIANGLE_STRIP);
+
+            const peDirVertices = [
+                 0.01, -0.40,
+                 0.20, -0.40,
+                 0.01, -0.5,
+                 0.20, -0.5
+            ];
+            desenharParte(peDirVertices, corPe, gl.TRIANGLE_STRIP);
+        }
+
+        desenharCena();
+    </script>
+</body>
+</html>

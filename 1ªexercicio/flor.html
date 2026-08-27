@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Exercício WebGL - Flor Arredondada</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        canvas {
+            border: 1px solid #aaa;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="meuCanvas" width="800" height="600"></canvas>
+
+    <script>
+        // 1. PREPARAÇÃO DO AMBIENTE
+        const canvas = document.getElementById('meuCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            throw new Error('WebGL não suportado!');
+        }
+
+        // 2. CRIAÇÃO E COMPILAÇÃO DOS SHADERS
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision mediump float;
+            uniform vec4 u_color; // Cor recebida do JS
+            void main() {
+                gl_FragColor = u_color;
+            }
+        `;
+
+        function compileShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Erro ao compilar shader:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        // 3. CRIAÇÃO E VINCULAÇÃO DO PROGRAMA
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error('Erro ao vincular programa: ' + gl.getProgramInfoLog(program));
+        }
+
+        const positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+        const colorUniformLocation = gl.getUniformLocation(program, 'u_color');
+
+        const positionBuffer = gl.createBuffer();
+
+        gl.useProgram(program);
+
+        gl.enableVertexAttribArray(positionAttributeLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // 4. FUNÇÕES AJUDANTES
+
+        // Função genérica de desenho
+        function desenharParte(vertices, cor, modo) {
+            gl.uniform4fv(colorUniformLocation, cor);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+            const numeroDeVertices = vertices.length / 2;
+            gl.drawArrays(modo, 0, numeroDeVertices);
+        }
+
+        // Gera vértices de preenchimento para uma elipse/círculo (TRIANGLE_FAN)
+        function criarVerticesElipsePreenchimento(raioX, raioY, numSegmentos, offsetX = 0, offsetY = 0) {
+            const verticesBorda = [];
+            for (let i = 0; i <= numSegmentos; i++) {
+                const angulo = (i / numSegmentos) * 2 * Math.PI;
+                verticesBorda.push(
+                    offsetX + raioX * Math.cos(angulo),
+                    offsetY + raioY * Math.sin(angulo)
+                );
+            }
+            return [offsetX, offsetY, ...verticesBorda];
+        }
+
+        // Gera vértices de contorno para uma elipse/círculo (LINE_LOOP)
+        function criarVerticesElipseContorno(raioX, raioY, numSegmentos, offsetX = 0, offsetY = 0) {
+            const vertices = [];
+            for (let i = 0; i < numSegmentos; i++) {
+                const angulo = (i / numSegmentos) * 2 * Math.PI;
+                vertices.push(
+                    offsetX + raioX * Math.cos(angulo),
+                    offsetY + raioY * Math.sin(angulo)
+                );
+            }
+            return vertices;
+        }
+
+        function desenharCena() {
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            // Fundo cinza claro
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            // Definições de cor
+            const corPetala = [1.0, 0.4, 0.7, 1.0]; // Rosa
+            const corMiolo = [1.0, 0.9, 0.2, 1.0]; // Amarelo
+            const corContorno = [0.0, 0.0, 0.0, 1.0]; // Preto
+
+
+            // --- 1. Pétalas (Preenchimento e Contorno) ---
+            const numPetalas = 6;
+
+            // Modelagem da pétala arredondada
+            const raioXPetala = 0.15; // Largura da pétala
+            const raioYPetala = 0.22; // Comprimento da pétala
+            const offYPetala = 0.28;  // Deslocamento para fora do centro da flor
+            const segmentos = 32;
+
+            // Geramos os vértices modelo de preenchimento e contorno uma vez
+            const preenchimentoPetalaModelo = criarVerticesElipsePreenchimento(raioXPetala, raioYPetala, segmentos, 0, offYPetala);
+            const contornoPetalaModelo = criarVerticesElipseContorno(raioXPetala, raioYPetala, segmentos, 0, offYPetala);
+
+
+            // Loop para desenhar preenchimento
+            for (let i = 0; i < numPetalas; i++) {
+                const angulo = (i / numPetalas) * 2 * Math.PI;
+
+                function rotacionarVertices(verticesModelo) {
+                    const verticesRotacionados = [];
+                    for (let j = 0; j < verticesModelo.length; j += 2) {
+                        const x = verticesModelo[j];
+                        const y = verticesModelo[j + 1];
+                        const rotX = x * Math.cos(angulo) - y * Math.sin(angulo);
+                        const rotY = x * Math.sin(angulo) + y * Math.cos(angulo);
+                        verticesRotacionados.push(rotX, rotY);
+                    }
+                    return verticesRotacionados;
+                }
+
+                // Desenha o Preenchimento Rosa
+                desenharParte(rotacionarVertices(preenchimentoPetalaModelo), corPetala, gl.TRIANGLE_FAN);
+            }
+
+            // Loop para os contornos das pétalas
+            for (let i = 0; i < numPetalas; i++) {
+                const angulo = (i / numPetalas) * 2 * Math.PI;
+
+                function rotacionarVertices(verticesModelo) {
+                    const verticesRotacionados = [];
+                    for (let j = 0; j < verticesModelo.length; j += 2) {
+                        const x = verticesModelo[j];
+                        const y = verticesModelo[j + 1];
+                        const rotX = x * Math.cos(angulo) - y * Math.sin(angulo);
+                        const rotY = x * Math.sin(angulo) + y * Math.cos(angulo);
+                        verticesRotacionados.push(rotX, rotY);
+                    }
+                    return verticesRotacionados;
+                }
+
+                // Desenha o Contorno Preto
+                desenharParte(rotacionarVertices(contornoPetalaModelo), corContorno, gl.LINE_LOOP);
+            }
+
+
+            // --- 2. Miolo (Preenchimento e Contorno) ---
+            const raioMiolo = 0.14;
+            const preenchimentoMioloVerts = criarVerticesElipsePreenchimento(raioMiolo, raioMiolo, 32);
+            const contornoMioloVerts = criarVerticesElipseContorno(raioMiolo, raioMiolo, 32);
+
+            // Desenha Preenchimento Amarelo
+            desenharParte(preenchimentoMioloVerts, corMiolo, gl.TRIANGLE_FAN);
+            // Desenha Contorno Preto
+            desenharParte(contornoMioloVerts, corContorno, gl.LINE_LOOP);
+        }
+
+        // Chame a função para desenhar tudo na tela!
+        desenharCena();
+
+    </script>
+</body>
+
+</html>

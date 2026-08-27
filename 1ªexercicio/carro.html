@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Exercício WebGL</title>
+    <style>
+        body { margin: 0; background-color: #111; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { border: 1px solid #fff; }
+    </style>
+</head>
+<body>
+    <canvas id="meuCanvas" width="800" height="600"></canvas>
+
+    <script>
+        // 1. PREPARAÇÃO DO AMBIENTE
+        const canvas = document.getElementById('meuCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            throw new Error('WebGL não suportado!');
+        }
+
+
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+
+        // Fragment Shader: Pinta os pixels.
+        // Usamos um 'uniform' para que a cor possa ser enviada do JavaScript.
+        const fragmentShaderSource = `
+            precision mediump float;
+            uniform vec4 u_color; // Cor recebida do JS
+            void main() {
+                gl_FragColor = u_color;
+            }
+        `;
+
+        function compileShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Erro ao compilar shader:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+
+        // 3. CRIAÇÃO E VINCULAÇÃO DO PROGRAMA
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            throw new Error('Erro ao vincular programa: ' + gl.getProgramInfoLog(program));
+        }
+
+        // Obtém a localização dos nossos dados para o programa (posições e cores)
+        const positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+        const colorUniformLocation = gl.getUniformLocation(program, 'u_color');
+
+        // Cria o buffer que vai mandar os dados da CPU para a GPU
+        const positionBuffer = gl.createBuffer();
+        
+        // Ativa o programa de shader
+        gl.useProgram(program);
+
+        // Habilita o atributo de posição
+        gl.enableVertexAttribArray(positionAttributeLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        // Diz ao atributo de posição como extrair os dados do buffer
+        gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // ===================================================================
+        // FUNÇÃO AJUDANTE PARA DESENHAR (AQUI ESTÁ A MODULARIZAÇÃO!)
+        // ===================================================================
+        function desenharParte(vertices, cor, modo) {
+            // Define a cor para esta parte específica
+            gl.uniform4fv(colorUniformLocation, cor);
+
+            // Envia os dados dos vértices para o buffer na GPU
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+            // Desenha!
+            const numeroDeVertices = vertices.length / 2;
+            gl.drawArrays(modo, 0, numeroDeVertices);
+        }
+
+        function desenharCena() {
+        // --- CÓDIGO DO CARRO ---
+        // Cole este bloco dentro da sua função desenharCena()
+
+        // Parte 1: Chassi (retângulo azul principal usando TRIANGLE_STRIP)
+        const chassiVertices = [
+            -0.6, -0.1,   // Canto superior esquerdo
+            0.6, -0.1,   // Canto superior direito
+            -0.6, -0.4,   // Canto inferior esquerdo
+            0.6, -0.4    // Canto inferior direito
+        ];
+        const corCarro = [0.92, 0.96, 0.25, 1.0]; // amarelo
+        desenharParte(chassiVertices, corCarro, gl.TRIANGLE_STRIP);
+
+
+        // Parte 2: Cabine (um trapézio azul em cima do chassi)
+        const cabineVertices = [
+            -0.3,  0.2,   // Canto superior esquerdo
+            0.3,  0.2,   // Canto superior direito
+            -0.4, -0.1,   // Canto inferior esquerdo
+            0.5, -0.1    // Canto inferior direito
+        ];
+        desenharParte(cabineVertices, corCarro, gl.TRIANGLE_STRIP); // Mesma cor do chassi
+
+
+        // Parte 3: Roda Traseira (um círculo cinza escuro)
+        const roda1Vertices = [
+            -0.5, -0.3,   // Pivô da roda
+            -0.3, -0.3,   // Ponto 1 (cima)
+            -0.5, -0.5,   // Ponto 2 (direita)
+            -0.3, -0.5,   // Ponto 3 (baixo)
+        ];
+        const corRoda = [0.2, 0.2, 0.2, 1.0]; // Cinza escuro
+        desenharParte(roda1Vertices, corRoda, gl.TRIANGLE_STRIP);
+
+        const calotaTraseiraVertices = [
+            -0.44, -0.36,  // Canto superior esquerdo
+            -0.36, -0.36,  // Canto superior direito
+            -0.44, -0.44,  // Canto inferior esquerdo
+            -0.36, -0.44   // Canto inferior direito
+        ];
+        const corCalota = [0.8, 0.8, 0.8, 1.0]; // Cinza claro / Prata metálico
+        desenharParte(calotaTraseiraVertices, corCalota, gl.TRIANGLE_STRIP);
+
+
+        // Parte 4: Roda Dianteira (outro círculo cinza escuro)
+        const roda2Vertices = [
+             0.3, -0.3, // Canto superior esquerdo
+             0.5, -0.3, // Canto superior direito
+             0.3, -0.5, // Canto inferior esquerdo
+             0.5, -0.5  // Canto inferior direito
+        ];
+        desenharParte(roda2Vertices, corRoda, gl.TRIANGLE_STRIP);
+
+        const calotaDianteiraVertices = [
+            0.36, -0.36,  // Canto superior esquerdo
+            0.44, -0.36,  // Canto superior direito
+            0.36, -0.44,  // Canto inferior esquerdo
+            0.44, -0.44   // Canto inferior direito
+        ];
+        desenharParte(calotaDianteiraVertices, corCalota, gl.TRIANGLE_STRIP);
+
+
+        // Parte 5: Janela (um trapézio azul claro)
+        const janelaVertices = [
+            -0.25, 0.15,  // Canto superior esquerdo
+            0.25, 0.15,  // Canto superior direito
+            -0.3, -0.05,  // Canto inferior esquerdo
+            0.4, -0.05   // Canto inferior direito
+        ];
+        const corJanela = [0.5, 0.8, 0.9, 1.0]; // Azul bem claro
+        desenharParte(janelaVertices, corJanela, gl.TRIANGLE_STRIP);
+
+        const farol_traseiroVertices = [
+            0.58, -0.15,  // Canto superior esquerdo
+            0.62, -0.15,  // Canto superior direito 
+            0.58, -0.25,  // Canto inferior esquerdo
+            0.62, -0.25   // Canto inferior direito
+        ];
+        const corFarol = [1.0, 1.0, 0.6, 1.0]; 
+        desenharParte(farol_traseiroVertices, corFarol, gl.TRIANGLE_STRIP);
+
+        const farol_dianteiroVertices = [
+            -0.62, -0.15,  // Canto superior esquerdo
+            -0.58, -0.15,  // Canto superior direito 
+            -0.62, -0.25,  // Canto inferior esquerdo
+            -0.58, -0.25   // Canto inferior direito
+        ];
+        desenharParte(farol_dianteiroVertices, corFarol, gl.TRIANGLE_STRIP);
+
+        const luz_dianteiraVertices = [
+            0.62, -0.20,  // Ponto de origem no farol
+            1.0,   -0.2,  // Topo do facho de luz na borda da tela
+            1.0,  -0.4   // Base do facho de luz na pista
+        ];
+        const corLuz = [1.0, 1.0, 0.7, 0.4]; // Amarelo translúcido
+        desenharParte(luz_dianteiraVertices, corLuz, gl.TRIANGLES);
+
+        const luzVertices = [
+            -0.62, -0.20,  // Ponto de origem no farol
+            -1.0,   -0.2,  // Topo do facho de luz na borda da tela
+            -1.0,  -0.4  // Base do facho de luz na pista
+        ];
+        desenharParte(luzVertices, corLuz, gl.TRIANGLES);
+    }
+
+        desenharCena();
+
+        </script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Algoritmo de Bresenham no WebGL</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #222;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: sans-serif;
+            padding-top: 20px;
+        }
+        canvas {
+            border: 1px solid #555;
+            background-color: #000;
+            cursor: crosshair;
+        }
+        .instrucoes {
+            margin-top: 15px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h2>Rasterização de Linhas (Bresenham)</h2>
+    <canvas id="meuCanvas" width="800" height="600"></canvas>
+    
+    <div class="instrucoes">
+        <p><strong>Mouse:</strong> Clique esquerdo 2 vezes para definir o início e o fim da linha.</p>
+        <p><strong>Teclado (0 a 9):</strong> Altera a cor da linha atual.</p>
+    </div>
+
+    <script>
+
+        const canvas = document.getElementById('meuCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) throw new Error('WebGL não suportado.');
+
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+                gl_PointSize = 2.0; // Tamanho do pixel renderizado
+            }
+        `;
+
+        const fragmentShaderSource = `
+            precision mediump float;
+            uniform vec4 u_color;
+            void main() {
+                gl_FragColor = u_color;
+            }
+        `;
+
+        function compileShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+            }
+            return shader;
+        }
+
+        const program = gl.createProgram();
+        gl.attachShader(program, compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource));
+        gl.attachShader(program, compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource));
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const aPosition = gl.getAttribLocation(program, 'a_position');
+        const uColor = gl.getUniformLocation(program, 'u_color');
+        const buffer = gl.createBuffer();
+
+        // Cores indexadas de 0 a 9 (RGBA normalizado)
+        const paletaCores = [
+            [1.0, 1.0, 1.0, 1.0], // 0: Branco
+            [1.0, 0.0, 0.0, 1.0], // 1: Vermelho
+            [0.0, 1.0, 0.0, 1.0], // 2: Verde
+            [0.0, 0.0, 1.0, 1.0], // 3: Azul
+            [1.0, 1.0, 0.0, 1.0], // 4: Amarelo
+            [1.0, 0.0, 1.0, 1.0], // 5: Magenta
+            [0.0, 1.0, 1.0, 1.0], // 6: Ciano
+            [1.0, 0.5, 0.0, 1.0], // 7: Laranja
+            [0.5, 0.0, 0.5, 1.0], // 8: Roxo
+            [0.5, 0.5, 0.5, 1.0]  // 9: Cinza
+        ];
+
+        let corAtual = 3; // Linha azul inicial (índice 3)
+        let cliqueAtual = 0;
+        let p1 = { x: 0, y: 0 }; // Inicial (0,0)
+        let p2 = { x: 0, y: 0 }; // Inicial (0,0)
+
+
+        /**
+         * Função 1: Traça a linha calculando os pixels via Bresenham e renderiza usando gl.POINTS
+         */
+        function imprimirLinha(x0, y0, x1, y1) {
+            const vertices = [];
+            
+            // Algoritmo de Bresenham (Operações de baixo nível/inteiras)
+            let dx = Math.abs(x1 - x0);
+            let dy = Math.abs(y1 - y0);
+            let sx = (x0 < x1) ? 1 : -1;
+            let sy = (y0 < y1) ? 1 : -1;
+            let err = dx - dy;
+
+            while (true) {
+           
+                let clipX = (x0 / canvas.width) * 2 - 1;
+                let clipY = (y0 / canvas.height) * -2 + 1;
+                
+                vertices.push(clipX, clipY);
+
+                if (x0 === x1 && y0 === y1) break;
+                
+                let e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x0 += sx; }
+                if (e2 < dx)  { err += dx; y0 += sy; }
+            }
+
+            // Preparação do WebGL para desenhar
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            // Atualiza o Uniform de Cor(responsavel por mudar a cor da linha)
+            gl.uniform4fv(uColor, paletaCores[corAtual]);
+
+            // Envia os vértices calculados para a GPU
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+            gl.enableVertexAttribArray(aPosition);
+            gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+
+            // Renderiza PONTO A PONTO, contornando a restrição de gl.LINES
+            gl.drawArrays(gl.POINTS, 0, vertices.length / 2);
+        }
+
+        function alterarCor(indice) {
+            if (indice >= 0 && indice <= 9) {
+                corAtual = indice;
+                imprimirLinha(p1.x, p1.y, p2.x, p2.y);
+            }
+        }
+
+        canvas.addEventListener('mousedown', (event) => {
+            // Verifica se é o botão esquerdo (0 = Esquerdo, 1 = Meio, 2 = Direito)
+            if (event.button !== 0) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.round(event.clientX - rect.left);
+            const y = Math.round(event.clientY - rect.top);
+
+            if (cliqueAtual === 0) {
+                p1 = { x, y };
+                cliqueAtual = 1;
+            } else {
+                p2 = { x, y };
+                cliqueAtual = 0;
+                imprimirLinha(p1.x, p1.y, p2.x, p2.y);
+            }
+        });
+
+        window.addEventListener('keydown', (event) => {
+            const teclaDigitada = parseInt(event.key);
+            if (!isNaN(teclaDigitada)) {
+                alterarCor(teclaDigitada);
+            }
+        });
+
+        imprimirLinha(p1.x, p1.y, p2.x, p2.y);
+
+    </script>
+</body>
+</html>

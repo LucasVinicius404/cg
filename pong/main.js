@@ -7,8 +7,6 @@ if (!gl) throw new Error("WebGL 2 não é suportado.");
 
 gl.viewport(0, 0, canvas.width, canvas.height);
 
-// Calcula o fator de correção para o eixo X não esticar
-const aspect = canvas.height / canvas.width;
 // --------------------------------------------------
 // VERTICES E CORES
 // --------------------------------------------------
@@ -350,9 +348,6 @@ function drawBolaCentro(){
         colorLocation,
         corBolaCentro
     );
-
-    let matrizBola = m3.translation(txBola, tyBola);
-    matrizBola = m3.scale(matrizBola, aspect, 1.0);
 
     gl.uniformMatrix3fv(
         transformLocation,
